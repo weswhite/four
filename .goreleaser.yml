@@ -1,0 +1,17 @@
+project_name: four
+builds:
+  - main: .
+    binary: four
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+archives:
+  - format: tar.gz
+    name_template: "four_{{ .Os }}_{{ .Arch }}"
+checksum:
+  name_template: checksums.txt
+release:
+  github:
+    owner: weswhite
+    name: four
