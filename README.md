@@ -20,6 +20,5 @@ four [options] [portfolio.xlsx]
 - `--source <path>` — Path to portfolio xlsx file
 - `--set-source <path>` — Set default source and exit
 - `--import <path>` — Import CSV/XLSX into bucket tracker
-- `--legacy` — Force legacy single-portfolio view
 
 On first run, the source file is saved to `~/.config/four/config.json` so you can just run `four` next time.

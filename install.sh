@@ -3,12 +3,13 @@ set -e
 
 REPO="weswhite/four"
 
-# Detect OS
+# Detect OS (WSL reports as Linux, which is correct)
 OS="$(uname -s)"
 case "$OS" in
-  Linux*)  OS=linux ;;
-  Darwin*) OS=darwin ;;
-  *)       echo "Unsupported OS: $OS"; exit 1 ;;
+  Linux*)          OS=linux ;;
+  Darwin*)         OS=darwin ;;
+  MINGW*|MSYS*|CYGWIN*) echo "Use WSL to run this script on Windows"; exit 1 ;;
+  *)               echo "Unsupported OS: $OS"; exit 1 ;;
 esac
 
 # Detect architecture
@@ -35,13 +36,21 @@ TMPDIR="$(mktemp -d)"
 curl -fsSL "$URL" -o "${TMPDIR}/${ARCHIVE}"
 tar -xzf "${TMPDIR}/${ARCHIVE}" -C "$TMPDIR"
 
-# Install binary
+# Install binary — prefer /usr/local/bin, fall back to ~/.local/bin (common on WSL)
 INSTALL_DIR="/usr/local/bin"
 if [ -w "$INSTALL_DIR" ]; then
   mv "${TMPDIR}/four" "${INSTALL_DIR}/four"
-else
+elif command -v sudo >/dev/null 2>&1; then
   echo "Installing to ${INSTALL_DIR} (requires sudo)..."
   sudo mv "${TMPDIR}/four" "${INSTALL_DIR}/four"
+else
+  INSTALL_DIR="$HOME/.local/bin"
+  mkdir -p "$INSTALL_DIR"
+  mv "${TMPDIR}/four" "${INSTALL_DIR}/four"
+  case ":$PATH:" in
+    *":$INSTALL_DIR:"*) ;;
+    *) echo "Add ${INSTALL_DIR} to your PATH: export PATH=\"${INSTALL_DIR}:\$PATH\"" ;;
+  esac
 fi
 
 rm -rf "$TMPDIR"

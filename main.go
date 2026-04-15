@@ -17,7 +17,6 @@ func main() {
 	source := flag.String("source", "", "Path to portfolio xlsx file")
 	setSource := flag.String("set-source", "", "Set default source file in config and exit")
 	importFile := flag.String("import", "", "Import a CSV/XLSX file into bucket tracker")
-	legacy := flag.Bool("legacy", false, "Force legacy single-portfolio view")
 	debug := flag.Bool("debug", false, "Print terminal size and exit")
 	flag.Parse()
 
@@ -58,7 +57,6 @@ func main() {
 		fmt.Println("  --source <path>       Path to portfolio xlsx file")
 		fmt.Println("  --set-source <path>   Set default source and exit")
 		fmt.Println("  --import <path>       Import CSV/XLSX into bucket tracker")
-		fmt.Println("  --legacy              Force legacy single-portfolio view")
 		fmt.Println()
 		fmt.Println("Drag and drop an Excel file onto this command.")
 		fmt.Println("After first run, the source is remembered in ~/.config/four/config.json")
@@ -94,13 +92,8 @@ func main() {
 	state.TxStore = LoadTransactionStore()
 	state.Watchlist = LoadWatchlist()
 
-	// Determine mode — only legacy if explicitly requested
-	if *legacy {
-		state.LegacyMode = true
-	}
-
 	// Auto-assign xlsx holdings to buckets if no symbol map exists yet
-	if !state.LegacyMode && filePath != "" && len(state.SymMap.Entries) == 0 {
+	if filePath != "" && len(state.SymMap.Entries) == 0 {
 		for _, h := range portfolio.Holdings {
 			if !state.SymMap.IsKnown(h.Symbol) {
 				// Default: assign to equity income bucket
@@ -112,7 +105,6 @@ func main() {
 
 	// Handle --import flag
 	if *importFile != "" {
-		state.LegacyMode = false
 		importPath := strings.TrimSpace(*importFile)
 		importPath = strings.ReplaceAll(importPath, "\\ ", " ")
 
@@ -175,14 +167,12 @@ func main() {
 	}
 
 	// Compute buckets
-	if !state.LegacyMode {
-		realizedByBucket := state.TxStore.RealizedGainByBucket(state.SymMap)
-		prevValues := PreviousMonthValues()
-		state.Buckets, state.TotalValue = AggregateBuckets(state.Portfolio.Holdings, state.SymMap, realizedByBucket, prevValues)
+	realizedByBucket := state.TxStore.RealizedGainByBucket(state.SymMap)
+	prevValues := PreviousMonthValues()
+	state.Buckets, state.TotalValue = AggregateBuckets(state.Portfolio.Holdings, state.SymMap, realizedByBucket, prevValues)
 
-		// Auto-snapshot
-		_ = AutoSnapshot(state.Buckets, state.TotalValue)
-	}
+	// Auto-snapshot
+	_ = AutoSnapshot(state.Buckets, state.TotalValue)
 
 	// Switch terminal to raw mode
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
@@ -196,8 +186,8 @@ func main() {
 	fmt.Print("\033[3J" + clearScr + hideCur + home)
 	defer fmt.Print(showCur + clearScr + "\033[3J" + home)
 
-	// Start Yahoo Finance agent if not in legacy mode
-	if !state.LegacyMode {
+	// Start Yahoo Finance agent
+	{
 		symbols := make([]string, 0, len(state.Portfolio.Holdings)+len(state.Watchlist.Entries))
 		for _, h := range state.Portfolio.Holdings {
 			symbols = append(symbols, h.Symbol)
@@ -268,11 +258,9 @@ func main() {
 		case quotes := <-yahooCh:
 			ApplyYahooQuotes(state.Portfolio.Holdings, quotes)
 			state.Portfolio.recomputeAll()
-			if !state.LegacyMode {
-				realizedByBucket := state.TxStore.RealizedGainByBucket(state.SymMap)
-				prevValues := PreviousMonthValues()
-				state.Buckets, state.TotalValue = AggregateBuckets(state.Portfolio.Holdings, state.SymMap, realizedByBucket, prevValues)
-			}
+			realizedByBucket := state.TxStore.RealizedGainByBucket(state.SymMap)
+			prevValues := PreviousMonthValues()
+			state.Buckets, state.TotalValue = AggregateBuckets(state.Portfolio.Holdings, state.SymMap, realizedByBucket, prevValues)
 			render(state)
 			lastRender = time.Now()
 		case <-ticker.C:

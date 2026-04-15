@@ -146,7 +146,6 @@ type AppState struct {
 	ShowHelp        bool
 	SortFields      []string
 	SortIndex       int
-	LegacyMode      bool
 }
 
 func NewAppState(p *Portfolio, cfg *Config) *AppState {
@@ -179,10 +178,6 @@ func (s *AppState) CurrentSortLabel() string {
 }
 
 func render(state *AppState) {
-	if state.LegacyMode || state.Nav == nil {
-		renderLegacy(state)
-		return
-	}
 	switch state.Nav.View {
 	case ViewDashboard:
 		renderDashboard(state)
@@ -799,148 +794,6 @@ func renderHistory(state *AppState) {
 		pad = 1
 	}
 	b.WriteString(dimWhite + left + strings.Repeat(" ", pad) + hints + reset + "\n")
-	flushBuffer(&b, w)
-}
-
-// ── Legacy View (original single-portfolio) ──
-
-func renderLegacy(state *AppState) {
-	w := getTermWidth()
-	tier := layoutTier(w)
-	p := state.Portfolio
-	cfg := state.Config
-
-	var b strings.Builder
-
-
-	// ── Header ──
-	renderLine(&b, w)
-	b.WriteString(boldCyan + " DIVIDEND TRACKER" + reset)
-	b.WriteString(dimWhite + "  Income Portfolio" + reset)
-	now := time.Now().Format("Jan 02 2006  15:04:05")
-	hdrLeft := 36
-	if p.Modified {
-		hdrLeft += 12
-	}
-	pad := w - hdrLeft - len(now)
-	if pad < 1 {
-		pad = 1
-	}
-	if p.Modified {
-		b.WriteString(yellow + " [modified]" + reset)
-	}
-	b.WriteString(strings.Repeat(" ", pad))
-	b.WriteString(dimWhite + now + reset + "\n")
-	renderLine(&b, w)
-
-	// ── Summary Dashboard ──
-	goalPct := 0.0
-	if p.AnnualGoal > 0 {
-		goalPct = (p.TotalAnnualDiv / p.AnnualGoal) * 100
-	}
-
-	gainPct := 0.0
-	if p.CostBasis > 0 {
-		gainPct = (p.GainLoss / p.CostBasis) * 100
-	}
-
-	if tier == LayoutNarrow {
-		b.WriteString(fmt.Sprintf("  %sMkt Value%s  %s", dimWhite, reset, boldWhite+fmtMoney(p.MarketValue)+reset))
-		b.WriteString(fmt.Sprintf("  %sGain/Loss%s %s (%s)\n", dimWhite, reset, colorMoney(p.GainLoss), colorPct(gainPct)))
-		b.WriteString(fmt.Sprintf("  %sCost Basis%s %s", dimWhite, reset, dimWhite+fmtMoney(p.CostBasis)+reset))
-		b.WriteString(fmt.Sprintf("  %sCash%s %s\n", dimWhite, reset, fmtMoney(p.Cash)))
-	} else {
-		b.WriteString(fmt.Sprintf("  %sMkt Value%s   %-14s", dimWhite, reset, boldWhite+fmtMoney(p.MarketValue)+reset))
-		b.WriteString(fmt.Sprintf("  %sCost Basis%s  %-14s", dimWhite, reset, dimWhite+fmtMoney(p.CostBasis)+reset))
-		b.WriteString(fmt.Sprintf("  %sGain/Loss%s  %s", dimWhite, reset, colorMoney(p.GainLoss)))
-		b.WriteString(fmt.Sprintf(" (%s)", colorPct(gainPct)))
-		b.WriteString(fmt.Sprintf("  %sCash%s %s\n", dimWhite, reset, fmtMoney(p.Cash)))
-	}
-
-	renderLine(&b, w)
-
-	// ── Dividend Income ──
-	b.WriteString(boldWhite + "  DIVIDEND INCOME" + reset + "\n")
-	if tier == LayoutNarrow {
-		b.WriteString(fmt.Sprintf("  %sMonthly%s  %s", dimWhite, reset, boldGreen+fmtMoney(p.ProjectedMonthly)+reset))
-		b.WriteString(fmt.Sprintf("  %sAnnual%s  %s", dimWhite, reset, green+fmtMoney(p.TotalAnnualDiv)+reset))
-		b.WriteString(fmt.Sprintf("  %sYield%s %s\n", dimWhite, reset, yellow+fmt.Sprintf("%.2f%%", p.WeightedAvgYield)+reset))
-	} else {
-		b.WriteString(fmt.Sprintf("  %sMonthly%s    %-12s", dimWhite, reset, boldGreen+fmtMoney(p.ProjectedMonthly)+reset))
-		b.WriteString(fmt.Sprintf("  %sAnnual%s        %-12s", dimWhite, reset, green+fmtMoney(p.TotalAnnualDiv)+reset))
-		b.WriteString(fmt.Sprintf("  %sDaily%s  %-10s", dimWhite, reset, dimGreen+fmtMoney(p.DailyIncome)+reset))
-		b.WriteString(fmt.Sprintf("  %sWgt Yield%s  %s\n", dimWhite, reset, yellow+fmt.Sprintf("%.2f%%", p.WeightedAvgYield)+reset))
-	}
-
-	// ── Additional Stats (medium/wide) ──
-	if tier != LayoutNarrow {
-		b.WriteString(fmt.Sprintf("  %sPositions%s  %s%d green%s / %s%d red%s",
-			dimWhite, reset, green, p.PositionsGreen, reset, red, p.PositionsRed, reset))
-		b.WriteString(fmt.Sprintf("    %sLargest%s  %s%s%s (%.1f%%)",
-			dimWhite, reset, cyan, p.LargestPosition, reset, p.LargestPosPct))
-		b.WriteString(fmt.Sprintf("    %sBest Yielder%s  %s%s%s %.2f%%",
-			dimWhite, reset, cyan, p.BestYielder, reset, p.BestYielderPct))
-		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("  %sTop Gainer%s %s%s%s %s",
-			dimWhite, reset, cyan, p.TopGainer, reset, colorCompact(p.TopGainerAmt)))
-		b.WriteString(fmt.Sprintf("    %sTop Loser%s  %s%s%s %s",
-			dimWhite, reset, cyan, p.TopLoser, reset, colorCompact(p.TopLoserAmt)))
-		if p.AnnualGoal > 0 {
-			coverage := (p.TotalAnnualDiv / p.AnnualGoal) * 100
-			b.WriteString(fmt.Sprintf("    %sGoal Coverage%s  %s%.1f%%%s",
-				dimWhite, reset, yellow, coverage, reset))
-		}
-		b.WriteString("\n")
-	}
-
-	// ── Goal Progress ──
-	if cfg.ShowGoal && p.AnnualGoal > 0 {
-		barWidth := 40
-		if tier == LayoutNarrow {
-			barWidth = w - 40
-			if barWidth < 10 {
-				barWidth = 10
-			}
-		}
-		filled := int(math.Min(goalPct/100*float64(barWidth), float64(barWidth)))
-		b.WriteString(fmt.Sprintf("  %sAnnual Goal%s  %s", dimWhite, reset, fmtMoney(p.AnnualGoal)))
-		b.WriteString("  [")
-		if filled > 0 {
-			b.WriteString(green + strings.Repeat("█", filled) + reset)
-		}
-		b.WriteString(dim + strings.Repeat("░", barWidth-filled) + reset)
-		b.WriteString(fmt.Sprintf("]  %s%.1f%%%s\n", yellow, goalPct, reset))
-	}
-
-	renderLine(&b, w)
-
-	// ── Holdings Table ──
-	if cfg.ShowHoldings {
-		renderHoldings(&b, state, w, tier)
-		renderLine(&b, w)
-	}
-
-	// ── Sector Allocation ──
-	if cfg.ShowSectors && tier != LayoutNarrow {
-		renderSectors(&b, p, w)
-		renderLine(&b, w)
-	}
-
-	// ── Top Payers ──
-	if cfg.ShowTopPayers {
-		renderTopPayers(&b, p, w, tier)
-		renderLine(&b, w)
-	}
-
-	// ── Help Overlay ──
-	if state.ShowHelp {
-		renderHelp(&b, w)
-		renderLine(&b, w)
-	}
-
-	// ── Status Bar ──
-	renderStatusBar(&b, state, w)
-
 	flushBuffer(&b, w)
 }
 

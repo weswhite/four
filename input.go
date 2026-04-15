@@ -138,34 +138,22 @@ func handleEvent(ev InputEvent, state *AppState) bool {
 		return true
 
 	case EventBucket1:
-		if state.LegacyMode {
-			cfg.ShowHoldings = !cfg.ShowHoldings
-			_ = cfg.Save()
-		} else if state.Nav != nil {
+		if state.Nav != nil {
 			state.Nav.SelectBucket(0)
 		}
 
 	case EventBucket2:
-		if state.LegacyMode {
-			cfg.ShowSectors = !cfg.ShowSectors
-			_ = cfg.Save()
-		} else if state.Nav != nil {
+		if state.Nav != nil {
 			state.Nav.SelectBucket(1)
 		}
 
 	case EventBucket3:
-		if state.LegacyMode {
-			cfg.ShowTopPayers = !cfg.ShowTopPayers
-			_ = cfg.Save()
-		} else if state.Nav != nil {
+		if state.Nav != nil {
 			state.Nav.SelectBucket(2)
 		}
 
 	case EventBucket4:
-		if state.LegacyMode {
-			cfg.ShowGoal = !cfg.ShowGoal
-			_ = cfg.Save()
-		} else if state.Nav != nil {
+		if state.Nav != nil {
 			state.Nav.SelectBucket(3)
 		}
 
