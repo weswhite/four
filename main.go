@@ -17,6 +17,7 @@ func main() {
 	source := flag.String("source", "", "Path to portfolio xlsx file")
 	setSource := flag.String("set-source", "", "Set default source file in config and exit")
 	importFile := flag.String("import", "", "Import a CSV/XLSX file into bucket tracker")
+	exportFile := flag.String("export", "", "Export portfolio to xlsx and exit")
 	debug := flag.Bool("debug", false, "Print terminal size and exit")
 	flag.Parse()
 
@@ -57,6 +58,7 @@ func main() {
 		fmt.Println("  --source <path>       Path to portfolio xlsx file")
 		fmt.Println("  --set-source <path>   Set default source and exit")
 		fmt.Println("  --import <path>       Import CSV/XLSX into bucket tracker")
+		fmt.Println("  --export <path>       Export portfolio to xlsx and exit")
 		fmt.Println()
 		fmt.Println("Drag and drop an Excel file onto this command.")
 		fmt.Println("After first run, the source is remembered in ~/.config/four/config.json")
@@ -173,6 +175,17 @@ func main() {
 
 	// Auto-snapshot
 	_ = AutoSnapshot(state.Buckets, state.TotalValue)
+
+	// --export: write xlsx and exit
+	if *exportFile != "" {
+		cs := LoadCashStore()
+		if err := ExportXlsx(*exportFile, state.Buckets, state.TotalValue, state.SymMap, cs); err != nil {
+			fmt.Fprintf(os.Stderr, "Error exporting: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Exported to %s\n", *exportFile)
+		return
+	}
 
 	// Switch terminal to raw mode
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
