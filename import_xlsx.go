@@ -18,8 +18,8 @@ type XlsxSummary struct {
 	AnnualGoal     float64
 }
 
-// ParseXlsx opens an xlsx file and reads holdings starting at row 16.
-// Returns ImportedHolding structs with Source set to "xlsx".
+// ParseXlsx opens an xlsx file and auto-detects the format.
+// Supports Schwab position exports and the app's own fixed-layout xlsx.
 func ParseXlsx(path string) ([]ImportedHolding, error) {
 	f, err := excelize.OpenFile(path)
 	if err != nil {
@@ -32,6 +32,99 @@ func ParseXlsx(path string) ([]ImportedHolding, error) {
 		return nil, fmt.Errorf("no sheets found in xlsx file")
 	}
 
+	// Auto-detect: scan first 10 rows for a Schwab-style header
+	for row := 1; row <= 10; row++ {
+		colMap := xlsxDetectHeader(f, sheet, row)
+		if colMap != nil {
+			return parseBrokerageXlsx(f, sheet, row, colMap)
+		}
+	}
+
+	// Fall back to fixed-layout format (holdings start at row 16)
+	return parseFixedXlsx(f, sheet)
+}
+
+// xlsxDetectHeader checks if the given row contains known brokerage header columns.
+// Returns a column-name-to-letter map, or nil if not a recognized header.
+func xlsxDetectHeader(f *excelize.File, sheet string, row int) map[string]string {
+	colMap := make(map[string]string)
+	for col := 'A'; col <= 'Z'; col++ {
+		cell := fmt.Sprintf("%c%d", col, row)
+		val, _ := f.GetCellValue(sheet, cell)
+		val = strings.TrimSpace(val)
+		if val == "" {
+			continue
+		}
+		upper := strings.ToUpper(val)
+
+		switch {
+		case upper == "SYMBOL":
+			colMap["Symbol"] = string(col)
+		case upper == "DESCRIPTION" || upper == "NAME":
+			colMap["Name"] = string(col)
+		case strings.HasPrefix(upper, "QTY") || upper == "QUANTITY" || upper == "SHARES":
+			colMap["Shares"] = string(col)
+		case upper == "PRICE":
+			colMap["Price"] = string(col)
+		case strings.HasPrefix(upper, "MKT VAL") || upper == "MARKET VALUE":
+			colMap["MarketValue"] = string(col)
+		case strings.HasPrefix(upper, "COST") || upper == "COST BASIS":
+			colMap["CostBasis"] = string(col)
+		case strings.HasPrefix(upper, "DIV YLD") || upper == "DIVIDEND YIELD":
+			colMap["DivYield"] = string(col)
+		case strings.HasPrefix(upper, "LAST DIV") || upper == "LAST DIVIDEND":
+			colMap["LastDiv"] = string(col)
+		}
+	}
+
+	// Need at least Symbol, Shares, and Price to be a valid header
+	if colMap["Symbol"] != "" && colMap["Shares"] != "" && colMap["Price"] != "" {
+		return colMap
+	}
+	return nil
+}
+
+// parseBrokerageXlsx reads holdings from a brokerage xlsx using a detected column map.
+func parseBrokerageXlsx(f *excelize.File, sheet string, headerRow int, colMap map[string]string) ([]ImportedHolding, error) {
+	var holdings []ImportedHolding
+	for row := headerRow + 1; ; row++ {
+		symbol, _ := f.GetCellValue(sheet, fmt.Sprintf("%s%d", colMap["Symbol"], row))
+		symbol = strings.TrimSpace(symbol)
+		if symbol == "" {
+			break
+		}
+		lower := strings.ToLower(symbol)
+		if strings.Contains(lower, "total") || strings.Contains(lower, "cash & cash") {
+			continue
+		}
+
+		name := ""
+		if col := colMap["Name"]; col != "" {
+			name, _ = f.GetCellValue(sheet, fmt.Sprintf("%s%d", col, row))
+			name = strings.TrimSpace(name)
+		}
+
+		shares := xlsxColFloat(f, sheet, colMap["Shares"], row)
+		price := xlsxColFloat(f, sheet, colMap["Price"], row)
+		mktVal := xlsxColFloat(f, sheet, colMap["MarketValue"], row)
+		if mktVal == 0 && shares > 0 && price > 0 {
+			mktVal = shares * price
+		}
+
+		holdings = append(holdings, ImportedHolding{
+			Symbol:      symbol,
+			Name:        name,
+			Shares:      shares,
+			Price:       price,
+			MarketValue: mktVal,
+			Source:      "Schwab",
+		})
+	}
+	return holdings, nil
+}
+
+// parseFixedXlsx reads holdings from the app's own fixed-layout xlsx (data at row 16).
+func parseFixedXlsx(f *excelize.File, sheet string) ([]ImportedHolding, error) {
 	var holdings []ImportedHolding
 	for row := 16; ; row++ {
 		symbol, _ := f.GetCellValue(sheet, fmt.Sprintf("A%d", row))
@@ -45,18 +138,24 @@ func ParseXlsx(path string) ([]ImportedHolding, error) {
 		price := xlsxCellFloat(f, sheet, fmt.Sprintf("D%d", row))
 		marketValue := xlsxCellFloat(f, sheet, fmt.Sprintf("E%d", row))
 
-		h := ImportedHolding{
+		holdings = append(holdings, ImportedHolding{
 			Symbol:      symbol,
 			Name:        strings.TrimSpace(name),
 			Shares:      shares,
 			Price:       price,
 			MarketValue: marketValue,
 			Source:      "xlsx",
-		}
-		holdings = append(holdings, h)
+		})
 	}
-
 	return holdings, nil
+}
+
+// xlsxColFloat reads a float from a column letter + row number.
+func xlsxColFloat(f *excelize.File, sheet, col string, row int) float64 {
+	if col == "" {
+		return 0
+	}
+	return xlsxCellFloat(f, sheet, fmt.Sprintf("%s%d", col, row))
 }
 
 // ParseXlsxSummary reads portfolio summary values from specific cells:
