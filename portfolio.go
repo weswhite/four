@@ -415,12 +415,30 @@ func HoldingsFromImported(imported []ImportedHolding, symMap *SymbolMap) []Holdi
 			Shares:       ih.Shares,
 			CurrentPrice: ih.Price,
 			MarketValue:  ih.MarketValue,
-			Source:        ih.Source,
+			CostBasis:    ih.CostBasis,
+			TotalGain:    ih.TotalGain,
+			LastDividend: ih.LastDiv,
+			Source:       ih.Source,
 			Bucket:       symMap.Lookup(ih.Symbol),
 			LastUpdated:  time.Now(),
 		}
 		if h.MarketValue == 0 && h.Shares > 0 && h.CurrentPrice > 0 {
 			h.MarketValue = h.Shares * h.CurrentPrice
+		}
+		if h.CostBasis > 0 && h.Shares > 0 {
+			h.AvgPrice = h.CostBasis / h.Shares
+		}
+		if h.TotalGain == 0 && h.CostBasis > 0 {
+			h.TotalGain = h.MarketValue - h.CostBasis
+		}
+		if ih.DivYield > 0 && h.MarketValue > 0 {
+			h.AnnualDivTotal = h.MarketValue * ih.DivYield / 100
+			if h.Shares > 0 {
+				h.AnnualDivShare = h.AnnualDivTotal / h.Shares
+			}
+			if h.CostBasis > 0 {
+				h.YieldOnCost = h.AnnualDivTotal / h.CostBasis
+			}
 		}
 		holdings = append(holdings, h)
 	}
@@ -440,6 +458,13 @@ func MergeHoldings(existing, incoming []Holding) []Holding {
 			ex.CurrentPrice = h.CurrentPrice
 			ex.MarketValue = h.MarketValue
 			ex.Shares = h.Shares
+			ex.CostBasis = h.CostBasis
+			ex.AvgPrice = h.AvgPrice
+			ex.TotalGain = h.TotalGain
+			ex.LastDividend = h.LastDividend
+			ex.AnnualDivTotal = h.AnnualDivTotal
+			ex.AnnualDivShare = h.AnnualDivShare
+			ex.YieldOnCost = h.YieldOnCost
 			ex.Source = h.Source
 			ex.LastUpdated = h.LastUpdated
 			if h.Name != "" {

@@ -119,6 +119,14 @@ func AggregateBuckets(holdings []Holding, symMap *SymbolMap, realizedByBucket ma
 		totalValue += h.MarketValue
 	}
 
+	// Add per-brokerage cash balances to the Cash bucket
+	cs := LoadCashStore()
+	cashTotal := cs.Total()
+	if cashTotal > 0 {
+		buckets[BucketCash].MarketValue += cashTotal
+		totalValue += cashTotal
+	}
+
 	for bt, b := range buckets {
 		if totalValue > 0 {
 			b.AllocationPct = (b.MarketValue / totalValue) * 100

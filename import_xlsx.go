@@ -85,8 +85,10 @@ func xlsxDetectHeader(f *excelize.File, sheet string, row int) map[string]string
 }
 
 // parseBrokerageXlsx reads holdings from a brokerage xlsx using a detected column map.
+// Returns an ImportResult with holdings and extracted cash balance.
 func parseBrokerageXlsx(f *excelize.File, sheet string, headerRow int, colMap map[string]string) ([]ImportedHolding, error) {
 	var holdings []ImportedHolding
+	var cashBalance float64
 	for row := headerRow + 1; ; row++ {
 		symbol, _ := f.GetCellValue(sheet, fmt.Sprintf("%s%d", colMap["Symbol"], row))
 		symbol = strings.TrimSpace(symbol)
@@ -94,7 +96,14 @@ func parseBrokerageXlsx(f *excelize.File, sheet string, headerRow int, colMap ma
 			break
 		}
 		lower := strings.ToLower(symbol)
-		if strings.Contains(lower, "total") || strings.Contains(lower, "cash & cash") {
+		if strings.Contains(lower, "total") {
+			continue
+		}
+		// Extract cash balance from "Cash & Cash Investments" row
+		if strings.Contains(lower, "cash") {
+			if col := colMap["MarketValue"]; col != "" {
+				cashBalance += xlsxColFloat(f, sheet, col, row)
+			}
 			continue
 		}
 
@@ -110,6 +119,10 @@ func parseBrokerageXlsx(f *excelize.File, sheet string, headerRow int, colMap ma
 		if mktVal == 0 && shares > 0 && price > 0 {
 			mktVal = shares * price
 		}
+		costBasis := xlsxColFloat(f, sheet, colMap["CostBasis"], row)
+		totalGain := mktVal - costBasis
+		divYield := xlsxColFloat(f, sheet, colMap["DivYield"], row)
+		lastDiv := xlsxColFloat(f, sheet, colMap["LastDiv"], row)
 
 		holdings = append(holdings, ImportedHolding{
 			Symbol:      symbol,
@@ -117,9 +130,21 @@ func parseBrokerageXlsx(f *excelize.File, sheet string, headerRow int, colMap ma
 			Shares:      shares,
 			Price:       price,
 			MarketValue: mktVal,
+			CostBasis:   costBasis,
+			TotalGain:   totalGain,
+			DivYield:    divYield,
+			LastDiv:     lastDiv,
 			Source:      "Schwab",
 		})
 	}
+
+	// Store cash balance for this source
+	if cashBalance > 0 {
+		cs := LoadCashStore()
+		cs.Set("Schwab", cashBalance)
+		_ = cs.Save()
+	}
+
 	return holdings, nil
 }
 

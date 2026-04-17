@@ -27,7 +27,18 @@ type ImportedHolding struct {
 	Shares      float64
 	Price       float64
 	MarketValue float64
+	CostBasis   float64
+	TotalGain   float64
+	DivYield    float64
+	LastDiv     float64
 	Source      string // brokerage name or "xlsx"
+}
+
+// ImportResult holds holdings plus metadata extracted during import.
+type ImportResult struct {
+	Holdings []ImportedHolding
+	Cash     float64
+	Source   string
 }
 
 // DetectBrokerageFormat reads the first lines of a CSV file and detects
